@@ -18,7 +18,6 @@ export default defineConfig({
         v3_singleFetch: true,
         v3_lazyRouteDiscovery: true,
       },
-      ignoredRouteFiles: ['**/duckdb/**/*.map', '**/duckdb/**/*.wasm'],
     }),
     tsconfigPaths(),
   ],
@@ -29,13 +28,9 @@ export default defineConfig({
       host: 'localhost',
     },
     headers: {
-      // WASM用のセキュリティヘッダーを設定
       'Cross-Origin-Embedder-Policy': 'require-corp',
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Resource-Policy': 'cross-origin',
-    },
-    fs: {
-      allow: ['..', 'node_modules/@duckdb/duckdb-wasm/dist'],
     },
   },
   optimizeDeps: {
@@ -46,7 +41,6 @@ export default defineConfig({
     rollupOptions: {
       external: [/^node:/],
     },
-    sourcemap: true,
   },
   publicDir: 'public',
 });

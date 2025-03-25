@@ -17,16 +17,18 @@ if (!existsSync(destDir)) {
   mkdirSync(destDir, { recursive: true });
 }
 
-// 必要なファイルのリスト
+// 実際に存在するファイルのリスト
 const requiredFiles = [
   'duckdb-browser-eh.worker.js',
   'duckdb-browser-eh.worker.js.map',
-  'duckdb-eh.wasm',
-  'duckdb-eh.wasm.map',
   'duckdb-browser-mvp.worker.js',
-  'duckdb-browser-mvp.worker.js.map',
+  'duckdb-eh.wasm',
   'duckdb-mvp.wasm',
-  'duckdb-mvp.wasm.map',
+  'duckdb-browser-coi.worker.js',
+  'duckdb-browser-coi.worker.js.map',
+  'duckdb-browser-coi.pthread.worker.js',
+  'duckdb-browser-coi.pthread.worker.js.map',
+  'duckdb-coi.wasm',
 ];
 
 // 実際にコピーされたファイルを追跡
@@ -51,6 +53,19 @@ for (const file of requiredFiles) {
     console.error(`Error copying ${file}: ${error.message}`);
     hasErrors = true;
   }
+}
+
+// duckdb-browser.mjsもコピーする (これはモジュールの初期化に必要)
+try {
+  const sourceMjsPath = join(sourceDir, 'duckdb-browser.mjs');
+  const destMjsPath = join(destDir, 'duckdb-browser.mjs');
+  if (existsSync(sourceMjsPath)) {
+    copyFileSync(sourceMjsPath, destMjsPath);
+    console.log('Copied: duckdb-browser.mjs');
+    copiedFiles.push('duckdb-browser.mjs');
+  }
+} catch (error) {
+  console.error(`Error copying duckdb-browser.mjs: ${error.message}`);
 }
 
 // コピー結果の確認 - 実際にコピーされたファイルのみチェック

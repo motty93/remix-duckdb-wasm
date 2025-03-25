@@ -1,30 +1,28 @@
 import type { LoaderFunctionArgs } from '@remix-run/node';
-import { redirect } from '@remix-run/node';
 
 /**
- * DuckDBのWASMファイルリクエストを処理するためのルーター
- * これにより、WASMファイルとそのソースマップファイルを正しく提供できます
+ * DuckDBのWASMファイルなどの静的ファイルにアクセスするためのルート
  */
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  // URLからパスを取得
-  const url = new URL(request.url);
-  const path = params['*'] || '';
+export async function loader({ params }: LoaderFunctionArgs) {
+  const pathParam = params['*'] || '';
+  const staticFilePath = `/duckdb/${pathParam}`;
 
-  // DuckDBのWASMファイルやワーカーファイルであれば、/public/duckdb/にリダイレクト
-  if (path.endsWith('.wasm') || path.endsWith('.worker.js') || path.endsWith('.map')) {
-    return redirect(`/duckdb/${path}`);
-  }
+  console.log(`Static file request for: ${staticFilePath}`);
 
-  // それ以外は404
-  throw new Response('Not Found', { status: 404 });
-};
+  // 静的ファイルへのレスポンスを返す
+  return new Response(null, {
+    status: 307,
+    headers: {
+      Location: staticFilePath,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    },
+  });
+}
 
-// ページコンポーネント（通常は表示されない）
+// ページコンポーネントは不要（静的ファイルを処理するだけのルート）
 export default function DuckdbRoute() {
-  return (
-    <div>
-      <h1>DuckDB Resource</h1>
-      <p>This route handles DuckDB WASM resources.</p>
-    </div>
-  );
+  return null;
 }

@@ -4,14 +4,22 @@ import type { AsyncDuckDB } from '@duckdb/duckdb-wasm';
 let db: AsyncDuckDB | null = null;
 let dbInitPromise: Promise<AsyncDuckDB> | null = null;
 
+const isProduction = process.env.NODE_ENV === 'production';
+const basePath = isProduction ? '' : '';
+
 const DUCKDB_BUNDLES: duckdb.DuckDBBundles = {
   mvp: {
-    mainModule: '/duckdb/duckdb-mvp.wasm',
-    mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
+    mainModule: `${basePath}/duckdb/duckdb-mvp.wasm`,
+    mainWorker: `${basePath}/duckdb/duckdb-browser-mvp.worker.js`,
   },
   eh: {
-    mainModule: '/duckdb/duckdb-eh.wasm',
-    mainWorker: '/duckdb/duckdb-browser-eh.worker.js',
+    mainModule: `${basePath}/duckdb/duckdb-eh.wasm`,
+    mainWorker: `${basePath}/duckdb/duckdb-browser-eh.worker.js`,
+  },
+  coi: {
+    mainModule: `${basePath}/duckdb/duckdb-coi.wasm`,
+    mainWorker: `${basePath}/duckdb/duckdb-browser-coi.worker.js`,
+    pthreadWorker: `${basePath}/duckdb/duckdb-browser-coi.pthread.worker.js`,
   },
 };
 
@@ -21,23 +29,20 @@ export async function initDuckDB(): Promise<AsyncDuckDB> {
 
   dbInitPromise = (async () => {
     try {
+      console.log('Initializing DuckDB...');
+      console.log('WASM Bundles:', DUCKDB_BUNDLES);
+
       // DuckDBをロード
       const logger = new duckdb.ConsoleLogger();
 
-      const mainWorker = DUCKDB_BUNDLES.eh?.mainWorker;
-      if (!mainWorker) {
-        throw new Error('DuckDB worker bundle not found');
+      const bundle = DUCKDB_BUNDLES.eh ?? DUCKDB_BUNDLES.mvp;
+      if (!bundle || !bundle.mainModule || !bundle.mainWorker) {
+        throw new Error('DuckDB bundle not found');
       }
 
-      const worker = await duckdb.createWorker(mainWorker);
+      const worker = await duckdb.createWorker(bundle.mainWorker);
       const duckdbInstance = new duckdb.AsyncDuckDB(logger, worker);
-
-      const mainModule = DUCKDB_BUNDLES.eh?.mainModule;
-      if (!mainModule) {
-        throw new Error('DuckDB module bundle not found');
-      }
-
-      await duckdbInstance.instantiate(mainModule);
+      await duckdbInstance.instantiate(bundle.mainModule);
 
       // サンプルデータを作成
       await createSampleData(duckdbInstance);
@@ -59,13 +64,26 @@ async function createSampleData(db: AsyncDuckDB): Promise<void> {
   try {
     // サンプルデータを作成
     await conn.query(`
-      CREATE TABLE sales (
+      CREATE TABLE IF NOT EXISTS sales (
         date DATE,
         region VARCHAR,
         product VARCHAR,
         amount DECIMAL(10, 2)
       )
     `);
+
+    // テーブルが空の場合のみデータを挿入
+    const checkResult = await conn.query('SELECT COUNT(*) as count FROM sales');
+    const checkResultChild = checkResult.getChild(0);
+    if (!checkResultChild) {
+      throw new Error('Failed to check sales table');
+    }
+
+    const count = checkResultChild.toArray()[0].count;
+    if (count > 0) {
+      console.log('Sample data already exists');
+      return;
+    }
 
     await conn.query(`
       INSERT INTO sales VALUES
@@ -100,6 +118,7 @@ export async function runQuery(query: string) {
   const conn = await duckdbInstance.connect();
 
   try {
+    console.log('Running query:', query);
     const result = await conn.query(query);
     return result.toArray();
   } finally {
