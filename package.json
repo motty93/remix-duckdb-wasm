@@ -6,22 +6,31 @@
   "scripts": {
     "build": "remix vite:build",
     "dev": "remix vite:dev",
-    "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "remix-serve ./build/server/index.js",
+    "fmt": "biome format --write ./app",
+    "fmt:check": "biome format ./app",
+    "lint": "biome lint ./app",
+    "setup-duckdb": "cp -r node_modules/@duckdb/duckdb-wasm/dist/* public/duckdb/",
+    "postinstall": "bun run setup-duckdb",
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.29.0",
+    "@duckdb/duckdb-wasm-shell": "^1.28.1-dev106.0",
     "@remix-run/node": "^2.16.2",
     "@remix-run/react": "^2.16.2",
     "@remix-run/serve": "^2.16.2",
     "isbot": "^4.1.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "recharts": "^2.15.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@remix-run/dev": "^2.16.2",
     "@types/react": "^18.2.20",
-    "@types/react-dom": "^18.2.7",
+    "@types/react-dom": "^19.0.4",
+    "@types/recharts": "^1.8.29",
     "@typescript-eslint/eslint-plugin": "^6.7.4",
     "@typescript-eslint/parser": "^6.7.4",
     "autoprefixer": "^10.4.19",
