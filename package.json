@@ -14,7 +14,8 @@
     "setup-duckdb": "node ./setup-duckdb.mjs",
     "postinstall": "bun run setup-duckdb",
     "typecheck": "tsc",
-    "clean": "rm -rf .cache build public/build public/duckdb"
+    "clean": "rm -rf .cache build public/build public/duckdb",
+    "restart": "bun run clean && bun run setup-duckdb && bun run dev"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",

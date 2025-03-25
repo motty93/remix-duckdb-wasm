@@ -131,8 +131,17 @@ export default function DuckDBClient() {
             <li>ブラウザがWebAssembly (WASM)をサポートしていることを確認してください</li>
             <li>ブラウザのコンソールでエラーメッセージを確認してください</li>
             <li>ブラウザのキャッシュをクリアしてみてください</li>
-            <li>別のブラウザで試してみてください</li>
+            <li>Chrome/Edgeなどの最新ブラウザを使用してください</li>
+            <li>プライベートブラウジングモードを無効にしてください</li>
+            <li>サードパーティCookieの制限を一時的に解除してみてください</li>
           </ul>
+        </div>
+        <div className='mt-4 p-4 bg-yellow-100 border-l-4 border-yellow-500'>
+          <p className='font-bold'>技術的な情報:</p>
+          <p className='text-sm mt-1'>
+            DuckDB-WASMはシェアードメモリとCross-Origin Isolationを必要とします。
+            これらの機能はブラウザのセキュリティ設定によって制限されている可能性があります。
+          </p>
         </div>
         <button
           className='mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded'
@@ -185,7 +194,7 @@ export default function DuckDBClient() {
                 nameKey='region'
                 label={({ region, total }) => `${region}: ¥${total.toLocaleString()}`}
               >
-                {data?.byRegion.map((entry, index) => (
+                {data?.byRegion.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -207,7 +216,7 @@ export default function DuckDBClient() {
                 nameKey='product'
                 label={({ product, total }) => `${product}: ¥${total.toLocaleString()}`}
               >
-                {data?.byProduct.map((entry, index) => (
+                {data?.byProduct.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>

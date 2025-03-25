@@ -32,7 +32,14 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'require-corp',
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Content-Security-Policy':
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' blob:;",
     },
+    fs: {
+      strict: false,
+      allow: ['..'],
+    },
+    middlewareMode: false,
   },
   optimizeDeps: {
     exclude: ['@duckdb/duckdb-wasm'],
@@ -41,7 +48,12 @@ export default defineConfig({
     target: 'es2020',
     rollupOptions: {
       external: [/^node:/],
+      output: {
+        manualChunks: undefined,
+      },
     },
+    // wasm fileをアセットとして含める
+    assetsInlineLimit: 0,
   },
   publicDir: 'public',
 });

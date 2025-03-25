@@ -4,8 +4,7 @@ import type { AsyncDuckDB } from '@duckdb/duckdb-wasm';
 let db: AsyncDuckDB | null = null;
 let dbInitPromise: Promise<AsyncDuckDB> | null = null;
 
-// 重要: DuckDBのWASMファイルへのパスを静的ルートを通して提供するよう変更
-const basePath = '/static/duckdb/';
+const basePath = '/duckdb/';
 
 const DUCKDB_BUNDLES: duckdb.DuckDBBundles = {
   mvp: {
