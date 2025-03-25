@@ -2,10 +2,11 @@ import type { LoaderFunctionArgs } from '@remix-run/node';
 
 /**
  * DuckDBのWASMファイルなどの静的ファイルにアクセスするためのルート
+ * viteでは/public以下のファイルにアクセス可能
  */
 export async function loader({ params }: LoaderFunctionArgs) {
   const pathParam = params['*'] || '';
-  const staticFilePath = `/duckdb/${pathParam}`;
+  const staticFilePath = `/${pathParam}`;
 
   console.log(`Static file request for: ${staticFilePath}`);
 

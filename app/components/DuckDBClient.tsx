@@ -35,20 +35,35 @@ export default function DuckDBClient() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
   const [dbInitialized, setDbInitialized] = useState<boolean>(false);
+  const [initAttempts, setInitAttempts] = useState<number>(0);
 
   useEffect(() => {
+    // 最大3回まで初期化を試みる
+    if (initAttempts >= 3) {
+      setError('DuckDBの初期化に失敗しました。ページを再読み込みしてください。');
+      return;
+    }
+
     async function initializeDB() {
       try {
+        console.log(`DuckDB初期化の試行 #${initAttempts + 1}`);
+        setError(null);
         await initDuckDB();
         setDbInitialized(true);
       } catch (err) {
-        setError('DuckDBの初期化に失敗しました');
-        console.error(err);
+        console.error('DuckDB初期化エラー:', err);
+        setError(
+          `DuckDBの初期化に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        // 再試行のためにカウントを増やす
+        setInitAttempts((prev) => prev + 1);
       }
     }
 
-    initializeDB();
-  }, []);
+    if (!dbInitialized && error === null) {
+      initializeDB();
+    }
+  }, [dbInitialized, initAttempts, error]);
 
   useEffect(() => {
     if (!dbInitialized) return;
@@ -95,7 +110,7 @@ export default function DuckDBClient() {
           })),
         });
       } catch (err) {
-        setError('データの取得に失敗しました');
+        setError(`データの取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
         console.error(err);
       } finally {
         setLoading(false);
@@ -105,8 +120,31 @@ export default function DuckDBClient() {
     loadData();
   }, [dbInitialized]);
 
+  // DuckDBの初期化に失敗した場合のトラブルシューティング情報を表示
   if (error) {
-    return <div className='error'>{error}</div>;
+    return (
+      <div className='error'>
+        <p>{error}</p>
+        <div className='mt-4'>
+          <h3>トラブルシューティング:</h3>
+          <ul className='list-disc pl-5 mt-2'>
+            <li>ブラウザがWebAssembly (WASM)をサポートしていることを確認してください</li>
+            <li>ブラウザのコンソールでエラーメッセージを確認してください</li>
+            <li>ブラウザのキャッシュをクリアしてみてください</li>
+            <li>別のブラウザで試してみてください</li>
+          </ul>
+        </div>
+        <button
+          className='mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded'
+          onClick={() => {
+            setError(null);
+            setInitAttempts(0);
+          }}
+        >
+          再試行
+        </button>
+      </div>
+    );
   }
 
   if (loading) {
