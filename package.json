@@ -6,13 +6,15 @@
   "scripts": {
     "build": "remix vite:build",
     "dev": "remix vite:dev",
+    "dev:alt": "PORT=3000 remix vite:dev",
     "start": "remix-serve ./build/server/index.js",
     "fmt": "biome format --write ./app",
     "fmt:check": "biome format ./app",
     "lint": "biome lint ./app",
-    "setup-duckdb": "cp -r node_modules/@duckdb/duckdb-wasm/dist/* public/duckdb/",
+    "setup-duckdb": "node ./setup-duckdb.mjs",
     "postinstall": "bun run setup-duckdb",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "clean": "rm -rf .cache build public/build public/duckdb"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
