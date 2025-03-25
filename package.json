@@ -14,7 +14,7 @@
     "setup-duckdb": "node ./setup-duckdb.mjs",
     "postinstall": "bun run setup-duckdb",
     "typecheck": "tsc",
-    "clean": "./scripts/clean.sh",
+    "clean": "./scripts/cleanup.sh",
     "restart": "bun run clean && bun run setup-duckdb && bun run dev",
     "deploy": "wrangler deploy",
     "deploy:pages": "bun run build && wrangler pages deploy ./public"

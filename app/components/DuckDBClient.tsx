@@ -38,12 +38,6 @@ export default function DuckDBClient() {
   const [initAttempts, setInitAttempts] = useState<number>(0);
 
   useEffect(() => {
-    // 最大3回まで初期化を試みる
-    if (initAttempts >= 3) {
-      setError('DuckDBの初期化に失敗しました。ページを再読み込みしてください。');
-      return;
-    }
-
     async function initializeDB() {
       try {
         console.log(`DuckDB初期化の試行 #${initAttempts + 1}`);
@@ -55,15 +49,13 @@ export default function DuckDBClient() {
         setError(
           `DuckDBの初期化に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
         );
-        // 再試行のためにカウントを増やす
-        setInitAttempts((prev) => prev + 1);
       }
     }
 
-    if (!dbInitialized && error === null) {
+    if (typeof window !== 'undefined') {
       initializeDB();
     }
-  }, [dbInitialized, initAttempts, error]);
+  }, []);
 
   useEffect(() => {
     if (!dbInitialized) return;

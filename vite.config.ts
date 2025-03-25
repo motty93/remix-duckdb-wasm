@@ -19,7 +19,7 @@ export default defineConfig({
         v3_singleFetch: true,
         v3_lazyRouteDiscovery: true,
       },
-      serverModuleFormat: 'esm',
+      ignoredRouteFiles: ['**/.*', '**/*.test.{js,jsx,ts,tsx}'],
     }),
     tsconfigPaths(),
   ],
@@ -57,6 +57,9 @@ export default defineConfig({
     },
     // WASMファイルをアセットとして扱う
     assetsInlineLimit: 0,
+  },
+  ssr: {
+    noExternal: [/@duckdb\/.*/]
   },
   publicDir: 'public',
 });
