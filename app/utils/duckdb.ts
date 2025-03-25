@@ -1,5 +1,5 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { AsyncDuckDB } from '@duckdb/duckdb-wasm';
+import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 
 let db: AsyncDuckDB | null = null;
 let dbInitPromise: Promise<AsyncDuckDB> | null = null;
@@ -83,23 +83,40 @@ export async function initDuckDB(): Promise<AsyncDuckDB> {
           }
 
           // WorkerとDuckDBインスタンスの作成
-          console.log(`Creating worker from: ${bundle.mainWorker}`);
-          const worker = await duckdb.createWorker(bundle.mainWorker);
+          try {
+            console.log(`Creating worker from: ${bundle.mainWorker}`);
+            const worker = await duckdb.createWorker(bundle.mainWorker);
 
-          console.log('Creating DuckDB instance');
-          const duckdbInstance = new duckdb.AsyncDuckDB(logger, worker);
+            console.log('Creating DuckDB instance');
+            const duckdbInstance = new duckdb.AsyncDuckDB(logger, worker);
 
-          console.log(`Instantiating WASM module: ${bundle.mainModule}`);
-          await duckdbInstance.instantiate(bundle.mainModule);
+            try {
+              console.log(`Instantiating WASM module: ${bundle.mainModule}`);
+              await duckdbInstance.instantiate(bundle.mainModule);
 
-          console.log('Creating sample data');
-          await createSampleData(duckdbInstance);
+              // ここまでくれば初期化は成功
+              try {
+                console.log('Creating sample data');
+                await createSampleData(duckdbInstance);
+              } catch (sampleDataError) {
+                // サンプルデータの作成に失敗しても初期化は継続
+                console.warn('Error creating sample data:', sampleDataError);
+                console.log('Continuing with DuckDB initialization despite sample data error');
+              }
 
-          console.log(`Successfully initialized DuckDB with ${bundleKey} bundle`);
-          db = duckdbInstance;
-          return duckdbInstance;
-        } catch (error) {
-          console.error(`Error with ${bundleKey} bundle:`, error);
+              console.log(`Successfully initialized DuckDB with ${bundleKey} bundle`);
+              db = duckdbInstance;
+              return duckdbInstance;
+            } catch (instantiateError) {
+              console.error('Error instantiating WASM module:', instantiateError);
+              throw instantiateError;
+            }
+          } catch (workerError) {
+            console.error('Error creating worker:', workerError);
+            throw workerError;
+          }
+        } catch (bundleError) {
+          console.error(`Error with ${bundleKey} bundle:`, bundleError);
         }
       }
 
@@ -118,6 +135,7 @@ async function createSampleData(db: AsyncDuckDB): Promise<void> {
 
   try {
     // サンプルデータを作成
+    console.log('Creating sales table if not exists');
     await conn.query(`
       CREATE TABLE IF NOT EXISTS sales (
         date DATE,
@@ -127,19 +145,48 @@ async function createSampleData(db: AsyncDuckDB): Promise<void> {
       )
     `);
 
-    // テーブルが空の場合のみデータを挿入
-    const checkResult = await conn.query('SELECT COUNT(*) as count FROM sales');
-    const checkResultChild = checkResult.getChild(0);
-    if (!checkResultChild) {
-      throw new Error('Failed to check sales table');
-    }
+    try {
+      // テーブルが空の場合のみデータを挿入
+      console.log('Checking if sales table has data');
+      const checkResult = await conn.query('SELECT COUNT(*) as count FROM sales');
+      const checkResultChild = checkResult.getChild(0);
 
-    const count = checkResultChild.toArray()[0].count;
-    if (count > 0) {
-      console.log('Sample data already exists');
-      return;
-    }
+      if (!checkResultChild) {
+        console.log('No result from COUNT query, inserting data anyway');
+        await insertSampleData(conn);
+        return;
+      }
 
+      const rows = checkResultChild.toArray();
+      if (!rows || rows.length === 0) {
+        console.log('Empty result from COUNT query, inserting data anyway');
+        await insertSampleData(conn);
+        return;
+      }
+
+      const count = rows[0].count;
+      console.log(`Sales table has ${count} rows`);
+
+      if (count === 0) {
+        console.log('Sales table is empty, inserting sample data');
+        await insertSampleData(conn);
+      } else {
+        console.log('Sample data already exists');
+      }
+    } catch (countError) {
+      console.error('Error checking table count:', countError);
+      console.log('Attempting to insert sample data anyway');
+      await insertSampleData(conn);
+    }
+  } finally {
+    await conn.close();
+  }
+}
+
+// サンプルデータを挿入する関数を分離
+async function insertSampleData(conn: AsyncDuckDBConnection): Promise<void> {
+  console.log('Inserting sample data into sales table');
+  try {
     await conn.query(`
       INSERT INTO sales VALUES
         ('2023-01-01', '東京', '製品A', 1200.50),
@@ -163,8 +210,10 @@ async function createSampleData(db: AsyncDuckDB): Promise<void> {
         ('2023-01-10', '東京', '製品A', 1450.00),
         ('2023-01-10', '大阪', '製品B', 975.50)
     `);
-  } finally {
-    await conn.close();
+    console.log('Sample data inserted successfully');
+  } catch (insertError) {
+    console.error('Error inserting sample data:', insertError);
+    throw new Error(`Failed to insert sample data: ${insertError}`);
   }
 }
 

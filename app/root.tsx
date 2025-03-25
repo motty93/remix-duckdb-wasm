@@ -17,7 +17,7 @@ export const headers: HeadersFunction = () => {
       style-src 'self' 'unsafe-inline';
       font-src 'self' data:;
       img-src 'self' data:;
-      connect-src 'self' blob:;
+      connect-src 'self' blob: ws: wss:;
     `
       .replace(/\s+/g, ' ')
       .trim(),
@@ -33,7 +33,7 @@ export default function App() {
         {/* ブラウザのHTMLレベルでもCSPを設定 */}
         <meta
           httpEquiv='Content-Security-Policy'
-          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' blob:;"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' blob: ws: wss:;"
         />
         <Meta />
         <Links />
