@@ -4,113 +4,113 @@ import type { AsyncDuckDB } from '@duckdb/duckdb-wasm';
 let db: AsyncDuckDB | null = null;
 let dbInitPromise: Promise<AsyncDuckDB> | null = null;
 
-const basePath = '/duckdb/';
+// 絶対パスを使用してURLを指定
+const getBasePath = () => {
+  if (typeof window !== 'undefined') {
+    // アプリがどのパスで提供されているかを取得
+    const origin = window.location.origin;
+    return `${origin}/`;
+  }
+  return '/';
+};
 
+// DuckDBバンドルの定義
 const DUCKDB_BUNDLES: duckdb.DuckDBBundles = {
   mvp: {
-    mainModule: `${basePath}duckdb-mvp.wasm`,
-    mainWorker: `${basePath}duckdb-browser-mvp.worker.js`,
+    mainModule: `${getBasePath()}duckdb/duckdb-mvp.wasm`,
+    mainWorker: `${getBasePath()}duckdb/duckdb-browser-mvp.worker.js`,
   },
   eh: {
-    mainModule: `${basePath}duckdb-eh.wasm`,
-    mainWorker: `${basePath}duckdb-browser-eh.worker.js`,
+    mainModule: `${getBasePath()}duckdb/duckdb-eh.wasm`,
+    mainWorker: `${getBasePath()}duckdb/duckdb-browser-eh.worker.js`,
   },
   coi: {
-    mainModule: `${basePath}duckdb-coi.wasm`,
-    mainWorker: `${basePath}duckdb-browser-coi.worker.js`,
-    pthreadWorker: `${basePath}duckdb-browser-coi.pthread.worker.js`,
+    mainModule: `${getBasePath()}duckdb/duckdb-coi.wasm`,
+    mainWorker: `${getBasePath()}duckdb/duckdb-browser-coi.worker.js`,
+    pthreadWorker: `${getBasePath()}duckdb/duckdb-browser-coi.pthread.worker.js`,
   },
 };
 
+// ファイルの存在確認
+const checkFileExists = async (url: string): Promise<boolean> => {
+  try {
+    console.log(`Checking if file exists: ${url}`);
+    const response = await fetch(url, { method: 'HEAD' });
+    const exists = response.ok;
+    console.log(`File ${url} exists: ${exists}`);
+    return exists;
+  } catch (e) {
+    console.error(`Error checking file: ${url}`, e);
+    return false;
+  }
+};
+
 export async function initDuckDB(): Promise<AsyncDuckDB> {
+  // サーバーサイドでの実行をチェック
+  if (typeof window === 'undefined') {
+    throw new Error('DuckDB cannot be initialized on the server side');
+  }
+
   if (db) return db;
   if (dbInitPromise) return dbInitPromise;
 
   dbInitPromise = (async () => {
     try {
-      console.log('Initializing DuckDB...');
-      console.log('WASM Bundles:', DUCKDB_BUNDLES);
-
-      // 1. まずEHバンドルを試す
-      // 2. それが利用できなければMVPバンドルを使用
-      // 3. どちらも利用できなければエラー
+      console.log('DuckDB初期化の試行 #1');
       const logger = new duckdb.ConsoleLogger();
-      const bundle = await selectBundle();
 
-      console.log('Selected bundle:', bundle);
+      // 利用可能なバンドルを探す
+      for (const bundleKey of ['eh', 'mvp', 'coi'] as const) {
+        const bundle = DUCKDB_BUNDLES[bundleKey];
 
-      if (!bundle?.mainModule || !bundle?.mainWorker) {
-        throw new Error('DuckDB bundle not found or incomplete');
+        if (!bundle?.mainModule || !bundle?.mainWorker) {
+          console.log(`Bundle ${bundleKey} is not complete`);
+          continue;
+        }
+
+        try {
+          console.log(`Trying bundle: ${bundleKey}`);
+          console.log(`- Worker URL: ${bundle.mainWorker}`);
+          console.log(`- Module URL: ${bundle.mainModule}`);
+
+          // ファイルの存在確認
+          const workerExists = await checkFileExists(bundle.mainWorker);
+          const moduleExists = await checkFileExists(bundle.mainModule);
+
+          if (!workerExists || !moduleExists) {
+            console.log(`${bundleKey} bundle files not found`);
+            continue;
+          }
+
+          // WorkerとDuckDBインスタンスの作成
+          console.log(`Creating worker from: ${bundle.mainWorker}`);
+          const worker = await duckdb.createWorker(bundle.mainWorker);
+
+          console.log('Creating DuckDB instance');
+          const duckdbInstance = new duckdb.AsyncDuckDB(logger, worker);
+
+          console.log(`Instantiating WASM module: ${bundle.mainModule}`);
+          await duckdbInstance.instantiate(bundle.mainModule);
+
+          console.log('Creating sample data');
+          await createSampleData(duckdbInstance);
+
+          console.log(`Successfully initialized DuckDB with ${bundleKey} bundle`);
+          db = duckdbInstance;
+          return duckdbInstance;
+        } catch (error) {
+          console.error(`Error with ${bundleKey} bundle:`, error);
+        }
       }
 
-      try {
-        // ワーカーの作成を試みる
-        const worker = await duckdb.createWorker(bundle.mainWorker);
-        const duckdbInstance = new duckdb.AsyncDuckDB(logger, worker);
-
-        // WASMモジュールのインスタンス化
-        console.log('Instantiating WASM module:', bundle.mainModule);
-        await duckdbInstance.instantiate(bundle.mainModule);
-
-        // サンプルデータを作成
-        await createSampleData(duckdbInstance);
-
-        db = duckdbInstance;
-        return duckdbInstance;
-      } catch (workerError) {
-        console.error('Error creating worker:', workerError);
-        throw workerError;
-      }
+      throw new Error('Missing DuckDB worker URL!');
     } catch (e) {
-      console.error('DuckDB initialization failed:', e);
+      console.error('DuckDB初期化エラー:', e);
       throw e;
     }
   })();
 
   return dbInitPromise;
-}
-
-// 利用可能なバンドルを選択する関数
-async function selectBundle() {
-  // EHバンドルを優先的に使用
-  const bundle = DUCKDB_BUNDLES.eh;
-
-  // ファイルが存在するか確認する関数
-  const checkFileExists = async (url: string): Promise<boolean> => {
-    try {
-      const response = await fetch(url, { method: 'HEAD' });
-      return response.ok;
-    } catch (e) {
-      return false;
-    }
-  };
-
-  // EHバンドルのファイルが存在するか確認
-  if (bundle?.mainModule && bundle?.mainWorker) {
-    const moduleExists = await checkFileExists(bundle.mainModule);
-    const workerExists = await checkFileExists(bundle.mainWorker);
-
-    if (moduleExists && workerExists) {
-      console.log('Using EH bundle');
-      return bundle;
-    }
-  }
-
-  // EHバンドルが利用できない場合はMVPバンドルを試す
-  const mvpBundle = DUCKDB_BUNDLES.mvp;
-  if (mvpBundle?.mainModule && mvpBundle?.mainWorker) {
-    const moduleExists = await checkFileExists(mvpBundle.mainModule);
-    const workerExists = await checkFileExists(mvpBundle.mainWorker);
-
-    if (moduleExists && workerExists) {
-      console.log('Using MVP bundle');
-      return mvpBundle;
-    }
-  }
-
-  // どちらも利用できない場合
-  console.error('No valid DuckDB bundle found');
-  return null;
 }
 
 async function createSampleData(db: AsyncDuckDB): Promise<void> {
@@ -169,14 +169,23 @@ async function createSampleData(db: AsyncDuckDB): Promise<void> {
 }
 
 export async function runQuery(query: string) {
-  const duckdbInstance = await initDuckDB();
-  const conn = await duckdbInstance.connect();
+  if (typeof window === 'undefined') {
+    throw new Error('DuckDB queries cannot be run on the server side');
+  }
 
   try {
-    console.log('Running query:', query);
-    const result = await conn.query(query);
-    return result.toArray();
-  } finally {
-    await conn.close();
+    const duckdbInstance = await initDuckDB();
+    const conn = await duckdbInstance.connect();
+
+    try {
+      console.log('Running query:', query);
+      const result = await conn.query(query);
+      return result.toArray();
+    } finally {
+      await conn.close();
+    }
+  } catch (error) {
+    console.error('Query execution failed:', error);
+    throw error;
   }
 }

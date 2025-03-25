@@ -36,12 +36,14 @@ export default defineConfig({
         "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' blob:;",
     },
     fs: {
+      // 開発サーバーがpublicディレクトリを直接提供できるようにする
       strict: false,
       allow: ['..'],
     },
     middlewareMode: false,
   },
   optimizeDeps: {
+    // DuckDBをViteの最適化から除外
     exclude: ['@duckdb/duckdb-wasm'],
   },
   build: {
@@ -52,7 +54,7 @@ export default defineConfig({
         manualChunks: undefined,
       },
     },
-    // wasm fileをアセットとして含める
+    // WASMファイルをアセットとして扱う
     assetsInlineLimit: 0,
   },
   publicDir: 'public',
