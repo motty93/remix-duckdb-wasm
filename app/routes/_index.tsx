@@ -10,8 +10,12 @@ export const meta: MetaFunction = () => {
 };
 
 // avoid severside js
-export const clientLoader = true;
-export const clientAction = true;
+export function clientLoader() {
+  return null;
+}
+export function clientAction() {
+  return null;
+}
 
 export default function Index() {
   return (

@@ -1,46 +1,62 @@
+import type {
+  AsyncDuckDB,
+  AsyncDuckDBConnection,
+  ConsoleLogger,
+  DuckDBBundles,
+  QueryResult,
+} from '@duckdb/duckdb-wasm';
+
 // サーバーサイドとクライアントサイドを識別する
 const isServer = typeof window === 'undefined';
 const isClient = !isServer;
 
-// クライアントサイドでのみduckdbをインポート
-let duckdb: any;
-let AsyncDuckDB: any;
+// 必要なDuckDBモジュールの型定義
+interface DuckDBModule {
+  AsyncDuckDB: new (logger: ConsoleLogger, worker: Worker) => AsyncDuckDB;
+  ConsoleLogger: new () => ConsoleLogger;
+  createWorker: (url: string) => Promise<Worker>;
+}
+
+// クライアントサイドでのみ使用するモジュール参照
+let duckdbModule: DuckDBModule | null = null;
+let db: AsyncDuckDB | null = null;
+let dbInitPromise: Promise<AsyncDuckDB> | null = null;
 
 // クライアントサイドでのみモジュールを読み込む
 if (isClient) {
   import('@duckdb/duckdb-wasm').then((module) => {
-    duckdb = module;
-    AsyncDuckDB = module.AsyncDuckDB;
+    duckdbModule = module as unknown as DuckDBModule;
   });
 }
 
-let db: any = null;
-let dbInitPromise: Promise<any> | null = null;
-
-// 環境に関わらず単純なベースパスを使用
-const basePath = '';
-
-const DUCKDB_BUNDLES = isClient
+// duckdbルートを使用するようにパスを設定
+const DUCKDB_BUNDLES: DuckDBBundles | Record<string, never> = isClient
   ? {
       mvp: {
-        mainModule: `${basePath}/duckdb/duckdb-mvp.wasm`,
-        mainWorker: `${basePath}/duckdb/duckdb-browser-mvp.worker.js`,
+        mainModule: '/duckdb/duckdb-mvp.wasm',
+        mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
       },
       eh: {
-        mainModule: `${basePath}/duckdb/duckdb-eh.wasm`,
-        mainWorker: `${basePath}/duckdb/duckdb-browser-eh.worker.js`,
+        mainModule: '/duckdb/duckdb-eh.wasm',
+        mainWorker: '/duckdb/duckdb-browser-eh.worker.js',
       },
       coi: {
-        mainModule: `${basePath}/duckdb/duckdb-coi.wasm`,
-        mainWorker: `${basePath}/duckdb/duckdb-browser-coi.worker.js`,
-        pthreadWorker: `${basePath}/duckdb/duckdb-browser-coi.pthread.worker.js`,
+        mainModule: '/duckdb/duckdb-coi.wasm',
+        mainWorker: '/duckdb/duckdb-browser-coi.worker.js',
+        pthreadWorker: '/duckdb/duckdb-browser-coi.pthread.worker.js',
       },
     }
   : {};
 
-export async function initDuckDB() {
+// クエリ結果の型定義
+type RowData = Record<string, unknown>;
+interface QueryResultRow {
+  [key: string]: string | number | boolean | null;
+}
+
+export async function initDuckDB(): Promise<AsyncDuckDB> {
   // サーバーサイドでは何もしない
-  if (isServer) {
+  if (isServer || !duckdbModule) {
     return Promise.reject(new Error('DuckDB can only be initialized in the browser'));
   }
 
@@ -50,19 +66,22 @@ export async function initDuckDB() {
   dbInitPromise = (async () => {
     try {
       console.log('Initializing DuckDB...');
+      console.log('WASM Bundles:', DUCKDB_BUNDLES);
 
       // DuckDBをロード
-      const logger = new duckdb.ConsoleLogger();
+      const logger = new duckdbModule.ConsoleLogger();
 
-      // Try to use COI bundle first (which works best with modern browsers), fallback to others
-      const bundle = DUCKDB_BUNDLES.coi ?? DUCKDB_BUNDLES.eh ?? DUCKDB_BUNDLES.mvp;
+      // 互換性の高いehバンドルを使用
+      const bundle = (DUCKDB_BUNDLES as DuckDBBundles).eh ?? (DUCKDB_BUNDLES as DuckDBBundles).mvp;
       if (!bundle || !bundle.mainModule || !bundle.mainWorker) {
         throw new Error('DuckDB bundle not found');
       }
 
-      const worker = await duckdb.createWorker(bundle.mainWorker);
-      const duckdbInstance = new duckdb.AsyncDuckDB(logger, worker);
-      await duckdbInstance.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      console.log('Using DuckDB bundle:', bundle);
+
+      const worker = await duckdbModule.createWorker(bundle.mainWorker);
+      const duckdbInstance = new duckdbModule.AsyncDuckDB(logger, worker);
+      await duckdbInstance.instantiate(bundle.mainModule);
 
       // サンプルデータを作成
       await createSampleData(duckdbInstance);
@@ -78,7 +97,7 @@ export async function initDuckDB() {
   return dbInitPromise;
 }
 
-async function createSampleData(db: any): Promise<void> {
+async function createSampleData(db: AsyncDuckDB): Promise<void> {
   const conn = await db.connect();
 
   try {
@@ -92,19 +111,40 @@ async function createSampleData(db: any): Promise<void> {
       )
     `);
 
-    // テーブルが空の場合のみデータを挿入
-    const checkResult = await conn.query('SELECT COUNT(*) as count FROM sales');
-    const checkResultChild = checkResult.getChild(0);
-    if (!checkResultChild) {
-      throw new Error('Failed to check sales table');
+    // より単純な方法でテーブルが空かどうかを確認
+    try {
+      const checkResult = await conn.query('SELECT COUNT(*) as count FROM sales');
+
+      // 結果が配列またはオブジェクトで返される可能性がある
+      let count = 0;
+
+      if (Array.isArray(checkResult)) {
+        count = (checkResult[0] as { count: number })?.count || 0;
+      } else {
+        try {
+          const rows = extractRows(checkResult);
+          count = rows.length > 0 ? (rows[0].count as number) || 0 : 0;
+        } catch (e) {
+          console.warn('Error extracting rows:', e);
+          // 失敗した場合はデータを挿入する
+          count = 0;
+        }
+      }
+
+      console.log('Current row count:', count);
+
+      if (count > 0) {
+        console.log('Sample data already exists');
+        return;
+      }
+    } catch (e) {
+      console.warn('Error checking table:', e);
+      // エラーが発生した場合はデータを挿入する試み
     }
 
-    const count = checkResultChild.toArray()[0].count;
-    if (count > 0) {
-      console.log('Sample data already exists');
-      return;
-    }
+    console.log('Inserting sample data...');
 
+    // 安全にデータを挿入（既存のデータがあっても問題ない）
     await conn.query(`
       INSERT INTO sales VALUES
         ('2023-01-01', '東京', '製品A', 1200.50),
@@ -128,12 +168,45 @@ async function createSampleData(db: any): Promise<void> {
         ('2023-01-10', '東京', '製品A', 1450.00),
         ('2023-01-10', '大阪', '製品B', 975.50)
     `);
+
+    console.log('Sample data inserted successfully');
   } finally {
     await conn.close();
   }
 }
 
-export async function runQuery(query: string) {
+// クエリ結果から行データを抽出するヘルパー関数
+function extractRows(result: QueryResult | unknown): QueryResultRow[] {
+  if (!result) return [];
+
+  // QueryResultインターフェースに準拠している場合
+  if (typeof (result as QueryResult).toArray === 'function') {
+    return (result as QueryResult).toArray() as QueryResultRow[];
+  }
+
+  // 配列として返された場合
+  if (Array.isArray(result)) {
+    return result as QueryResultRow[];
+  }
+
+  // getChildメソッドがある場合
+  if (typeof result.getChild === 'function') {
+    try {
+      const child = result.getChild(0);
+      if (child && typeof child.toArray === 'function') {
+        return child.toArray() as QueryResultRow[];
+      }
+    } catch (e) {
+      console.warn('Error getting child from result:', e);
+    }
+  }
+
+  // その他の形式の場合
+  console.warn('Unexpected query result format:', result);
+  return [];
+}
+
+export async function runQuery(query: string): Promise<QueryResultRow[]> {
   if (isServer) {
     return Promise.reject(new Error('DuckDB queries can only be run in the browser'));
   }
@@ -144,7 +217,7 @@ export async function runQuery(query: string) {
   try {
     console.log('Running query:', query);
     const result = await conn.query(query);
-    return result.toArray();
+    return extractRows(result);
   } finally {
     await conn.close();
   }

@@ -53,6 +53,11 @@ export async function loader({ params }: LoaderFunctionArgs) {
   }
 }
 
-export default function DuckdbFile() {
+// only route client side
+export function clientLoader() {
+  return null;
+}
+
+export default function DuckdbRoute() {
   return null;
 }
