@@ -6,7 +6,7 @@ import type { LoaderFunctionArgs } from '@remix-run/node';
  * DuckDBのWASMファイルを直接提供するためのルート
  * パターン: /duckdb/[ファイル名]
  */
-export async function loader({ params, request }: LoaderFunctionArgs) {
+export async function loader({ params }: LoaderFunctionArgs) {
   const fileId = params['*'];
 
   if (!fileId) {
@@ -30,6 +30,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     } else if (fileId.endsWith('.worker.js')) {
       contentType = 'application/javascript';
     } else if (fileId.endsWith('.map')) {
+      contentType = 'application/json';
+    } else if (fileId.endsWith('.js.map')) {
       contentType = 'application/json';
     }
 
