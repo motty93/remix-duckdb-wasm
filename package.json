@@ -16,8 +16,8 @@
     "typecheck": "tsc",
     "clean": "./scripts/cleanup.sh",
     "restart": "bun run clean && bun run setup-duckdb && bun run dev",
-    "deploy": "wrangler deploy",
-    "deploy:pages": "bun run build && wrangler pages deploy ./public"
+    "deploy": "node_modules/.bin/wrangler deploy",
+    "deploy:pages": "bun run build && node_modules/.bin/wrangler pages deploy ./public"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
