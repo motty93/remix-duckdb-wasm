@@ -1,14 +1,14 @@
-import type {
-  AsyncDuckDB,
-  AsyncDuckDBConnection,
-  ConsoleLogger,
-  DuckDBBundles,
-  QueryResult,
-} from '@duckdb/duckdb-wasm';
+import type { AsyncDuckDB, ConsoleLogger, DuckDBBundles } from '@duckdb/duckdb-wasm';
 
-// サーバーサイドとクライアントサイドを識別する
 const isServer = typeof window === 'undefined';
 const isClient = !isServer;
+
+// DuckDBの型定義
+// @duckdb/duckdb-wasmにQueryResult型が存在しないため、独自に定義
+interface QueryResult {
+  toArray: () => any[];
+  getChild?: (index: number) => any;
+}
 
 // 必要なDuckDBモジュールの型定義
 interface DuckDBModule {
@@ -22,28 +22,24 @@ let duckdbModule: DuckDBModule | null = null;
 let db: AsyncDuckDB | null = null;
 let dbInitPromise: Promise<AsyncDuckDB> | null = null;
 
-// クライアントサイドでのみモジュールを読み込む
-if (isClient) {
-  import('@duckdb/duckdb-wasm').then((module) => {
-    duckdbModule = module as unknown as DuckDBModule;
-  });
-}
-
 // duckdbルートを使用するようにパスを設定
+// 絶対URLを使用してリソースのロード問題を解決
+// サーバーサイドではwindow.locationが利用できないので条件付きで定義
+const BASE_URL = isClient ? window.location.origin : '';
 const DUCKDB_BUNDLES: DuckDBBundles | Record<string, never> = isClient
   ? {
       mvp: {
-        mainModule: '/duckdb/duckdb-mvp.wasm',
-        mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
+        mainModule: `${BASE_URL}/duckdb/duckdb-mvp.wasm`,
+        mainWorker: `${BASE_URL}/duckdb/duckdb-browser-mvp.worker.js`,
       },
       eh: {
-        mainModule: '/duckdb/duckdb-eh.wasm',
-        mainWorker: '/duckdb/duckdb-browser-eh.worker.js',
+        mainModule: `${BASE_URL}/duckdb/duckdb-eh.wasm`,
+        mainWorker: `${BASE_URL}/duckdb/duckdb-browser-eh.worker.js`,
       },
       coi: {
-        mainModule: '/duckdb/duckdb-coi.wasm',
-        mainWorker: '/duckdb/duckdb-browser-coi.worker.js',
-        pthreadWorker: '/duckdb/duckdb-browser-coi.pthread.worker.js',
+        mainModule: `${BASE_URL}/duckdb/duckdb-coi.wasm`,
+        mainWorker: `${BASE_URL}/duckdb/duckdb-browser-coi.worker.js`,
+        pthreadWorker: `${BASE_URL}/duckdb/duckdb-browser-coi.pthread.worker.js`,
       },
     }
   : {};
@@ -56,7 +52,7 @@ interface QueryResultRow {
 
 export async function initDuckDB(): Promise<AsyncDuckDB> {
   // サーバーサイドでは何もしない
-  if (isServer || !duckdbModule) {
+  if (isServer) {
     return Promise.reject(new Error('DuckDB can only be initialized in the browser'));
   }
 
@@ -66,25 +62,49 @@ export async function initDuckDB(): Promise<AsyncDuckDB> {
   dbInitPromise = (async () => {
     try {
       console.log('Initializing DuckDB...');
-      console.log('WASM Bundles:', DUCKDB_BUNDLES);
+
+      // DuckDBバンドルの情報をログに出力
+      const bundles =
+        Object.keys(DUCKDB_BUNDLES).length > 0 ? DUCKDB_BUNDLES : 'No bundles available';
+      console.log('WASM Bundles:', bundles);
+
+      // DuckDBモジュールを動的にロード
+      if (!duckdbModule) {
+        console.log('Loading DuckDB module dynamically...');
+        const module = await import('@duckdb/duckdb-wasm');
+        duckdbModule = module as unknown as DuckDBModule;
+        console.log('DuckDB module loaded successfully');
+      }
 
       // DuckDBをロード
       const logger = new duckdbModule.ConsoleLogger();
 
+      // バンドルの存在確認
+      if (Object.keys(DUCKDB_BUNDLES).length === 0) {
+        throw new Error('No DuckDB bundles available. Running in server environment?');
+      }
+
       // 互換性の高いehバンドルを使用
       const bundle = (DUCKDB_BUNDLES as DuckDBBundles).eh ?? (DUCKDB_BUNDLES as DuckDBBundles).mvp;
       if (!bundle || !bundle.mainModule || !bundle.mainWorker) {
-        throw new Error('DuckDB bundle not found');
+        throw new Error('DuckDB bundle not found or invalid');
       }
 
       console.log('Using DuckDB bundle:', bundle);
+      console.log('Creating worker from:', bundle.mainWorker);
 
       const worker = await duckdbModule.createWorker(bundle.mainWorker);
+      console.log('Worker created successfully');
+
+      console.log('Instantiating DuckDB with module:', bundle.mainModule);
       const duckdbInstance = new duckdbModule.AsyncDuckDB(logger, worker);
       await duckdbInstance.instantiate(bundle.mainModule);
+      console.log('DuckDB instantiated successfully');
 
       // サンプルデータを作成
+      console.log('Creating sample data...');
       await createSampleData(duckdbInstance);
+      console.log('Sample data created successfully');
 
       db = duckdbInstance;
       return duckdbInstance;
@@ -180,7 +200,7 @@ function extractRows(result: QueryResult | unknown): QueryResultRow[] {
   if (!result) return [];
 
   // QueryResultインターフェースに準拠している場合
-  if (typeof (result as QueryResult).toArray === 'function') {
+  if (result && typeof (result as QueryResult).toArray === 'function') {
     return (result as QueryResult).toArray() as QueryResultRow[];
   }
 
@@ -190,9 +210,9 @@ function extractRows(result: QueryResult | unknown): QueryResultRow[] {
   }
 
   // getChildメソッドがある場合
-  if (typeof result.getChild === 'function') {
+  if (result && typeof (result as any).getChild === 'function') {
     try {
-      const child = result.getChild(0);
+      const child = (result as any).getChild(0);
       if (child && typeof child.toArray === 'function') {
         return child.toArray() as QueryResultRow[];
       }
@@ -211,14 +231,43 @@ export async function runQuery(query: string): Promise<QueryResultRow[]> {
     return Promise.reject(new Error('DuckDB queries can only be run in the browser'));
   }
 
-  const duckdbInstance = await initDuckDB();
-  const conn = await duckdbInstance.connect();
-
   try {
-    console.log('Running query:', query);
-    const result = await conn.query(query);
-    return extractRows(result);
-  } finally {
-    await conn.close();
+    const duckdbInstance = await initDuckDB();
+    const conn = await duckdbInstance.connect();
+
+    try {
+      console.log('Running query:', query);
+
+      // クエリを実行
+      const result = await conn.query(query);
+      console.log('Query executed successfully, processing results...');
+
+      // 結果の型を確認
+      console.log('Result type:', typeof result);
+      if (Array.isArray(result)) {
+        console.log('Result is an array with', result.length, 'items');
+      } else if (result && typeof result === 'object') {
+        console.log('Result is an object with keys:', Object.keys(result));
+
+        // メソッドの有無を確認
+        if (typeof result.toArray === 'function') {
+          console.log('Result has toArray method');
+        }
+        if (typeof result.getChild === 'function') {
+          console.log('Result has getChild method');
+        }
+      }
+
+      // 結果を抽出
+      const rows = extractRows(result);
+      console.log('Extracted', rows.length, 'rows from result');
+
+      return rows;
+    } finally {
+      await conn.close();
+    }
+  } catch (error) {
+    console.error('Error running query:', error);
+    throw error;
   }
 }
